@@ -1,0 +1,21 @@
+# PICO-8 (software proprietário, cada pessoa baixa o seu)
+pico-8/
+
+# Pastas e arquivos gerados pelo PICO-8 ao usar -home
+backup/
+bbs/
+cdata/
+cstore/
+sdcard/
+config.txt
+logs/
+plates/
+
+# Sistema
+.DS_Store
+*.swp
+
+# Logs e configurações de controle gerados pelo PICO-8
+activity_log.txt
+log.txt
+sdl_controllers.txt
