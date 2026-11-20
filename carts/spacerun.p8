@@ -2,34 +2,48 @@ pico-8 cartridge // http://www.pico-8.com
 version 41
 __lua__
 function _init()
-  px = 20          -- posiれせれこo x fixa do jogador
-  py = 100         -- posiれせれこo y
-  ground_y = 110   -- altura do chれこo
+  floor_y = 118    -- topo do chao (onde o chao e desenhado)
+  px = 20          -- posicao x fixa do jogador
+  py = floor_y - 16 -- topo do boneco em pe
   vy = 0           -- velocidade vertical
   grounded = true
   ducking = false
-  spd = 2          -- velocidade de rolagem dos obstれくculos
+  spd_base = 2     -- velocidade inicial (referencia para escalar o pulo)
+  spd = spd_base   -- velocidade de rolagem dos obstaculos
   obstacles = {}
-  spawn_timer = 0
-  spawn_interval = 40
+  dist_acc = 0     -- pixels percorridos desde o ultimo obstaculo
+  gap = 90         -- distancia em pixels ate o proximo obstaculo
+  gap_min = 75     -- distancia minima (precisa caber um pulo inteiro)
   score = 0
   game_over = false
+
+  -- estrelas do fundo
+  stars = {}
+  for i = 1, 40 do
+    local near = rnd(1) < 0.5
+    add(stars, {
+      x = rnd(128),
+      y = rnd(floor_y - 4),
+      col = near and 7 or 6,    -- 7 = branca, 6 = cinza claro
+      f = near and 0.25 or 0.1  -- fator de velocidade (parallax)
+    })
+  end
 end
 
 function spawn_obstacle()
-  local kind = flr(rnd(2)) -- 0 = chれこo (pular), 1 = voando (abaixar)
+  local kind = flr(rnd(2)) -- 0 = chao (pular), 1 = ovni (abaixar)
   local obs = {}
   obs.x = 128
   if kind == 0 then
     obs.type = "ground"
     obs.w = 8
-    obs.h = 10
-    obs.y = ground_y - obs.h
+    obs.h = 12
+    obs.y = floor_y - obs.h      -- base colada no chao
   else
     obs.type = "fly"
     obs.w = 10
-    obs.h = 8
-    obs.y = ground_y - 20
+    obs.y = 0                    -- hitbox do feixe comeca no topo da tela
+    obs.h = 106                  -- e vai ate y=106
   end
   add(obstacles, obs)
 end
@@ -40,21 +54,24 @@ function _update()
     return
   end
 
-  -- pulo
+  -- fator de escala: quanto mais rapido o jogo, mais rapido o pulo
+  local k = spd / spd_base
+
+  -- pulo (impulso escalado por k)
   if btn(4) and grounded then
-    vy = -4
+    vy = -4 * k
     grounded = false
   end
 
-  -- abaixar (sれは funciona no chれこo)
+  -- abaixar (so funciona no chao)
   ducking = btn(3) and grounded
 
-  -- gravidade
-  vy += 0.25
+  -- gravidade escalada por k^2
+  vy += 0.25 * k * k
   py += vy
 
-  if py >= ground_y - 8 then
-    py = ground_y - 8
+  if py >= floor_y - 16 then
+    py = floor_y - 16
     vy = 0
     grounded = true
   end
@@ -62,22 +79,35 @@ function _update()
   -- aumenta a dificuldade aos poucos
   if spd < 5 then spd += 0.001 end
 
-  -- spawn de obstれくculos
-  spawn_timer += 1
-  if spawn_timer >= spawn_interval then
-    spawn_timer = 0
-    spawn_interval = max(25, spawn_interval - 1)
+  -- move as estrelas (devagar, com parallax)
+  for s in all(stars) do
+    s.x -= spd * s.f
+    if s.x < 0 then
+      s.x = 127
+      s.y = rnd(floor_y - 4)
+    end
+  end
+
+  -- spawn por distancia percorrida
+  dist_acc += spd
+  if dist_acc >= gap then
+    dist_acc = 0
+    gap = max(gap_min, gap - 1)
     spawn_obstacle()
   end
 
-  -- move obstれくculos e checa colisれこo
+  -- hitbox do jogador (acompanha o desenho)
+  local ph = ducking and 6 or 16
+  local pyy = ducking and (floor_y - 6) or py
+  local hx1 = px + 2
+  local hx2 = px + 14
+
+  -- move obstaculos e checa colisao
   for o in all(obstacles) do
     o.x -= spd
     if o.x < -20 then del(obstacles, o) end
 
-    local ph = ducking and 4 or 8
-    local pyy = ducking and (py + 4) or py
-    if px + 8 > o.x and px < o.x + o.w
+    if hx2 > o.x and hx1 < o.x + o.w
        and pyy + ph > o.y and pyy < o.y + o.h then
       game_over = true
     end
@@ -88,16 +118,23 @@ end
 
 function _draw()
   cls(1)
-  rectfill(0, 118, 127, 127, 3) -- chれこo
 
-  for o in all(obstacles) do
-    local col = o.type == "ground" and 8 or 11
-    rectfill(o.x, o.y, o.x + o.w, o.y + o.h, col)
+  -- estrelas
+  for s in all(stars) do
+    pset(s.x, s.y, s.col)
   end
 
-  local ph = ducking and 4 or 8
-  local pyy = ducking and (py + 4) or py
-  sspr(8, 0, 8, 8, px, pyy, 16, 16) -- jogador
+  rectfill(0, floor_y, 127, 127, 6) -- chao (cinza claro)
+  for o in all(obstacles) do
+    -- chao = verde (11), voador = vermelho (8)
+    local col = o.type == "ground" and 11 or 8
+    -- -1 porque rectfill inclui o pixel final
+    rectfill(o.x, o.y, o.x + o.w - 1, o.y + o.h - 1, col)
+  end
+
+  local ph = ducking and 6 or 16
+  local pyy = ducking and (floor_y - 6) or py
+  sspr(8, 0, 8, 8, px, pyy, 16, ph) -- jogador
 
   print("score: "..score, 2, 2, 7)
 
@@ -105,16 +142,69 @@ function _draw()
     print("game over", 45, 60, 8)
     print("aperte o pra reiniciar", 15, 70, 7)
   end
+  for o in all(obstacles) do
+        if o.type == "ground" then
+      -- obstaculo do chao em cinza-azulado (combina com o chao cinza claro)
+      rectfill(o.x, o.y, o.x + o.w - 1, o.y + o.h - 1, 13)
+      -- sombra do lado direito para dar volume
+      line(o.x + o.w - 1, o.y, o.x + o.w - 1, o.y + o.h - 1, 5)
+      -- pontinhos escuros
+      pset(o.x + 2, o.y + 2, 1)
+      pset(o.x + 5, o.y + 4, 1)
+      pset(o.x + 2, o.y + 6, 1)
+      pset(o.x + 5, o.y + 8, 1)
+      pset(o.x + 2, o.y + 10, 1)
+    else
+      -- ovni no teto + feixe comprido (posicoes fixas, nao dependem de o.y/o.h)
+      local cx = o.x + 5
+      local y0 = 1                  -- topo da nave
+      local beam_end = 105          -- fim do feixe (mesma base de antes)
+      local blink = flr(time() * 4) % 2
+
+      -- feixe: sai da base da nave (y=10) e alarga ate o fim
+      local top = 10
+      local n = beam_end - top
+      for y = top, beam_end do
+        local hw = 1 + flr((y - top) / n * 3.99)   -- 1 a 4 px de cada lado
+        line(cx - hw, y, cx + hw, y, 9)            -- borda laranja
+        line(cx - hw + 1, y, cx + hw - 1, y, 10)   -- miolo amarelo
+        if (y + blink) % 3 == 0 then
+          pset(cx, y, 7)                           -- nucleo cintilando
+        end
+      end
+
+      -- cupula de vidro
+      line(cx - 2, y0, cx + 2, y0, 12)
+      rectfill(cx - 3, y0 + 1, cx + 3, y0 + 4, 12)
+      pset(cx - 2, y0 + 1, 7)
+      pset(cx - 1, y0 + 1, 7)
+      pset(cx - 2, y0 + 2, 7)
+
+      -- disco da nave
+      line(cx - 6, y0 + 5, cx + 6, y0 + 5, 6)
+      line(cx - 9, y0 + 6, cx + 9, y0 + 6, 6)
+      line(cx - 10, y0 + 7, cx + 10, y0 + 7, 13)
+      line(cx - 8, y0 + 8, cx + 8, y0 + 8, 5)
+
+      -- emissor do feixe
+      line(cx - 3, y0 + 9, cx + 3, y0 + 9, 5)
+
+      -- luzinhas piscando
+      for j = -8, 8, 4 do
+        pset(cx + j, y0 + 7, ((j / 4 + blink) % 2 == 0) and 10 or 8)
+      end
+    end
+  end	
 end
 __gfx__
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000022222222000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00700720b00b02000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00077020000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00077020aaaa02000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00700722222222000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000003000030000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000003000030000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000999999990000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000002290c00c090000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00700720900ee0090000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00077020999999990000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00077020009009000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00700722009009000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000003009009000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000003009009000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000003000030000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000

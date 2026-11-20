@@ -8,6 +8,7 @@ function _init()
  bet=5
  state="idle"
  msg=""
+ factor=0
  win=0
  t=0
 
@@ -21,7 +22,7 @@ function _init()
  }
 
  pool={}
- local w={6,6,5,5,3,1}
+ local w={12,9,6,4,3,2}
  for i=1,6 do
   for j=1,w[i] do add(pool,i) end
  end
@@ -71,7 +72,7 @@ function _update()
   end
 
  elseif state=="result" then
-  if t>40 then
+  if t>20 then
    state="idle"
   end
 
@@ -86,14 +87,16 @@ end
 function check_win()
  local a,b,c=reels[1],reels[2],reels[3]
  if a==b and b==c then
-  win=symbols[a].pay*bet
-  msg="tripla de "..symbols[a].name.."! +"..win
- elseif a==b or b==c or a==c then
-  local m=b
-  win=flr(symbols[m].pay*bet/3)
-  msg="par! +"..win
+  if a==6 then
+   factor=3
+  else
+   factor=2
+  end
+  win=bet*factor
+  msg="voce venceu"
  else
   win=0
+  factor=0
   msg="nao foi dessa vez..."
  end
  credits+=win
@@ -183,15 +186,15 @@ function _draw()
   draw_animal(reels[i],x,55)
  end
 
- print("fichas: "..credits,10,4,7)
- print("aposta: "..bet,80,4,7)
-
  if state=="idle" then
   print("botao x para girar",22,100,7)
  elseif state=="spin" then
   print("girando...",44,100,10)
  elseif state=="result" then
   print(msg,64-#msg*2,100,10)
+  if factor>0 then
+   print("fator: "..factor,64-10,110,10)
+  end
  elseif state=="over" then
   print("fichas acabaram!",30,50,8)
   print("x para reiniciar",30,60,7)
